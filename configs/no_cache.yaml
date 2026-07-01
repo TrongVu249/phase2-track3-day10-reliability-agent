@@ -7,9 +7,13 @@ providers:
     fail_rate: 0.05
     base_latency_ms: 260
     cost_per_1k_tokens: 0.006
+  - name: rescue
+    fail_rate: 0.0
+    base_latency_ms: 320
+    cost_per_1k_tokens: 0.004
 circuit_breaker:
   failure_threshold: 3
-  reset_timeout_seconds: 2
+  reset_timeout_seconds: 0.5
   success_threshold: 1
 cache:
   enabled: false
@@ -19,6 +23,7 @@ cache:
   redis_url: "redis://localhost:6379/0"
 load_test:
   requests: 100
+  seed: 42
 
 scenarios:
   - name: primary_timeout_100

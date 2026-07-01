@@ -119,19 +119,20 @@ def run_simulation(config: LabConfig, queries: list[str]) -> RunMetrics:
     TODO(student): Add a cache vs no-cache comparison scenario.
     Extend with your own custom scenarios (e.g., cost cap near limit).
     """
+    random.seed(config.load_test.seed)
+    _reset_shared_cache(config)
+
     if not config.scenarios:
         default_scenario = ScenarioConfig(name="default", description="baseline run")
         metrics = run_scenario(config, queries, default_scenario)
-        metrics.scenarios = {"default": "pass" if metrics.successful_requests > 0 else "fail"}
+        metrics.scenarios = {"default": "pass" if _scenario_passed("default", metrics) else "fail"}
         return metrics
 
     combined = RunMetrics()
     for scenario in config.scenarios:
         result = run_scenario(config, queries, scenario)
 
-        # TODO(student): Define pass/fail criteria per scenario.
-        # Example: primary_timeout_100 passes if fallback_success_rate > 0.9
-        passed = result.successful_requests > 0
+        passed = _scenario_passed(scenario.name, result)
         combined.scenarios[scenario.name] = "pass" if passed else "fail"
 
         combined.total_requests += result.total_requests
@@ -151,3 +152,34 @@ def run_simulation(config: LabConfig, queries: list[str]) -> RunMetrics:
                 combined.recovery_time_ms = (combined.recovery_time_ms + result.recovery_time_ms) / 2
 
     return combined
+
+
+def _scenario_passed(name: str, metrics: RunMetrics) -> bool:
+    """Evaluate scenario-specific reliability criteria."""
+    if name == "primary_timeout_100":
+        return (
+            metrics.availability >= 0.99
+            and metrics.fallback_success_rate >= 0.95
+            and metrics.circuit_open_count >= 1
+        )
+    if name == "primary_flaky_50":
+        return metrics.availability >= 0.99 and metrics.circuit_open_count >= 1
+    if name == "all_healthy":
+        return metrics.availability >= 0.99 and metrics.error_rate <= 0.01
+    return metrics.availability >= 0.99
+
+
+def _reset_shared_cache(config: LabConfig) -> None:
+    """Start Redis-backed simulations from a clean cache prefix."""
+    if not config.cache.enabled or config.cache.backend != "redis":
+        return
+
+    cache = SharedRedisCache(
+        config.cache.redis_url,
+        config.cache.ttl_seconds,
+        config.cache.similarity_threshold,
+    )
+    try:
+        cache.flush()
+    finally:
+        cache.close()
